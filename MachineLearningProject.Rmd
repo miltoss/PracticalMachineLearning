@@ -1,0 +1,139 @@
+---
+title: "Practical Machine Learning: Course Project"
+output: html_document
+---
+
+```{r, echo=FALSE, quietly = TRUE, warning = FALSE}
+
+
+rm(list = ls())
+setwd("~/Documents/Coursera/JHDSS/8.PracticalMachineLearning/Project")
+
+library(lattice, quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+library(ggplot2, quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+library(caret, quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+library(rpart, quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+library(dplyr, quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+library(rattle, quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+library(randomForest, quietly = TRUE, warn.conflicts = FALSE, , verbose = FALSE)
+library(e1071, quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+
+t <- read.csv("pml-training.csv")
+# dim(t)
+
+t <- t[, -c(1,2,3,4,5)]
+
+# Get the names of the variables
+mynames <- names(t)
+
+dump_cols <- NULL
+for (i in 1:length(mynames) ) {
+    s <- sum(is.na(t[, i]))
+    s <- s / nrow(t)
+    if (s > 0.5) {dump_cols <- c(dump_cols, i)}
+}
+# dump_cols
+
+t <- t[, -dump_cols]
+
+
+mynames <- names(t)
+keepvars <- mynames[!grepl( "kurtosis", mynames) & !grepl( "skewness", mynames) & !grepl( "amplitude", mynames) & !grepl( "max", mynames) & !grepl( "min", mynames)]
+
+t <- t[,  keepvars]
+
+
+# Decision tree
+
+
+
+set.seed(26577)
+
+```
+# Summary
+
+A model was fit on the training data for activity. Using a decision tree for variable selection and a random forest for the final model, a high model accuracy of 99.5 - 99.7 % is acchieved.
+
+# Data Preparation
+
+Contrary to almost all data sets used as examples in the course, the provided data set contains a large number of records. This fact makes it easier to use large train and testing datasets, so as to avoid the usual trade off. Therefore, I choose my favourite ratio of 50% for training and testing data partitions.
+
+The provided data set contains 159 features. A first visual inspection reveals that several features should be removed:
+
+* Timestamps and IDs: they have no predictive value
+
+* Too many misisng values (NA)
+
+* Other missing values (empty string, etc.)
+
+In a first step, the first category (timestamps, IDs were removed). A decision tree was attempted because decision trees are robust to missing values. 
+
+Training a model on all these features yields no meaningful model. Not all the records of the testing set can be predicted.
+
+Therefore I proceeded with data cleansing.
+
+Using standard data preparation methods, I removed all features with more than 50% missing values. Since the method of removing NA does not catch all the features that should be removed, a further inspection using the summary function revealed that attributes containing "kurtosis", "skewness", "max", "min", "amplitude" were further removed. In this manner the number of features was reduced to 54.
+
+At this point, it there comes the question as to which features should be kept and weather or how they should be transformed. Transformations and variable cleansing would be essential for fitting a logistic regression (glm).
+
+A further question concerns balancing the Classe variable. Ideally, each possible value of classe should be sampled so as to have an equal number of all possible values. Considering, however, the results of the following summary table:
+
+```{r, echo=FALSE}
+summary(t$classe)
+```
+
+I decide to risk proceeding without balancing.
+
+To reduce the effort, I followed a different approach which ended up paying off.
+
+First, let me recapitulate: I will work with 54 features (predictors) to predict classe. I have randomly split the data into a training and a testing data set, each being 50% of the total.
+
+
+```{r, echo = FALSE}
+set.seed(26577)
+inTrain = createDataPartition(t$classe, p = 0.5)[[1]]
+training = t[ inTrain,]
+testing = t[-inTrain,]
+```
+
+```{r, echo = TRUE}
+dim(training); dim(testing)
+```
+
+# Modelling
+
+I first fitted a decision tree. This is always a good way to start.
+The following figure is showing the resuting tree:
+
+```{r, echo = TRUE}
+modFit <- train(classe ~ .,method = "rpart", data = training)
+fancyRpartPlot(modFit$finalModel)
+```
+
+The accuracy of the model is low. 
+```{r, echo = FALSE}
+pred <- predict(modFit, newdata = testing)
+confusionMatrix(pred, testing$classe)[2:3]
+```
+
+Howevere, decision trees are also useful for plain variable selection.
+So I fit a different models only with the variables from the tree of the previous figure. In fact, I fit two random forests, since changing the seed before taking partitioning the original data set into training and validation sets has yielded different decision trees.
+
+
+```{r, echo = TRUE}
+
+modFit3 <- train(classe ~ roll_belt + num_window + magnet_dumbbell_y  + pitch_forearm + roll_forearm, method = "rf", data = training)
+pred3 <- predict(modFit3, newdata = testing)
+confusionMatrix(pred3, testing$classe)[2:3]
+
+```
+
+# Final Result
+The chosen model, the random forest shows a remarkable accuracy of 99.5% In fact, it is possible to increase the accuracy further to 99.7 % by slightly changing the input features.
+
+Gradient boosting and support vector machines were also tried.The former has a similar accuracy of 99.5 %. The latter has an inferior accuracy of 75 % and is not considered.
+
+
+
+
+
